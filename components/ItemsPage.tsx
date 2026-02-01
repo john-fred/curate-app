@@ -29,7 +29,7 @@ export default function ItemsPage({ user }: { user: any }) {
       setItems(data || [])
 
       // Extract unique categories
-      const cats = [...new Set((data || []).map((item) => item.category))].sort()
+const cats = Array.from(new Set((data || []).map((item) => item.category))).sort()
       setCategories(cats)
     } catch (err) {
       console.error('Error fetching items:', err)
