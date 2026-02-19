@@ -66,6 +66,7 @@ export default function ItemsList({ items, onItemDeleted }: ItemsListProps) {
           onMarkReviewed={() => handleMarkReviewed(item.id)}
           onArchive={() => handleArchive(item.id)}
           onDelete={() => handleDelete(item.id)}
+          onItemUpdated={onItemDeleted}
         />
       ))}
     </div>
