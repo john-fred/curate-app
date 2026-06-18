@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { supabase } from '@/lib/supabaseClient'
 import './ItemCard.css'
@@ -27,6 +27,9 @@ export default function ItemCard({
   const [isEditing, setIsEditing] = useState(false)
   const [editTitle, setEditTitle] = useState(item.title)
   const [editCategory, setEditCategory] = useState(item.category)
+  const [isNewCategory, setIsNewCategory] = useState(false)
+  const [newCategoryValue, setNewCategoryValue] = useState('')
+  const [existingCategories, setExistingCategories] = useState<string[]>([])
   const [editSubcategory, setEditSubcategory] = useState(item.subcategory || '')
   const [editTags, setEditTags] = useState((item.tags || []).join(', '))
   const [editNotes, setEditNotes] = useState(item.notes || '')
@@ -34,9 +37,48 @@ export default function ItemCard({
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState('')
 
+  // Fetch distinct categories when entering edit mode
+  useEffect(() => {
+    if (isEditing) {
+      fetchCategories()
+    }
+  }, [isEditing])
+
+  const fetchCategories = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('items')
+        .select('category')
+        .order('category')
+
+      if (error) throw error
+
+      const unique = Array.from(
+        new Set((data || []).map((row: { category: string }) => row.category.trim()))
+      ).sort((a, b) => a.localeCompare(b))
+
+      setExistingCategories(unique)
+    } catch (err) {
+      console.error('Could not load categories:', err)
+    }
+  }
+
+  const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value
+    if (val === '__new__') {
+      setIsNewCategory(true)
+      setEditCategory('')
+    } else {
+      setIsNewCategory(false)
+      setEditCategory(val)
+    }
+  }
+
+  const effectiveCategory = isNewCategory ? newCategoryValue : editCategory
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
-    return date.toLocaleDateString('en-US', {
+    return date.toLocaleDateString('en-GB', {
       month: 'short',
       day: 'numeric',
       year: date.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined,
@@ -53,7 +95,7 @@ export default function ItemCard({
   const handleSaveEdit = async () => {
     setError('')
 
-    if (!editTitle.trim() || !editCategory.trim()) {
+    if (!editTitle.trim() || !effectiveCategory.trim()) {
       setError('Title and category are required')
       return
     }
@@ -70,7 +112,7 @@ export default function ItemCard({
         .from('items')
         .update({
           title: editTitle.trim(),
-          category: editCategory.trim(),
+          category: effectiveCategory.trim(),
           subcategory: editSubcategory.trim() || null,
           tags: tagArray,
           notes: editNotes.trim() || null,
@@ -81,6 +123,8 @@ export default function ItemCard({
       if (updateError) throw updateError
 
       setIsEditing(false)
+      setIsNewCategory(false)
+      setNewCategoryValue('')
       onItemUpdated()
     } catch (err: any) {
       setError(err.message)
@@ -93,6 +137,8 @@ export default function ItemCard({
     setIsEditing(false)
     setEditTitle(item.title)
     setEditCategory(item.category)
+    setIsNewCategory(false)
+    setNewCategoryValue('')
     setEditSubcategory(item.subcategory || '')
     setEditTags((item.tags || []).join(', '))
     setEditNotes(item.notes || '')
@@ -123,12 +169,38 @@ export default function ItemCard({
           <div className="form-row">
             <div className="form-group">
               <label htmlFor={`category-${item.id}`}>Category *</label>
-              <input
+
+              {/* Dropdown — current category pre-selected */}
+              <select
                 id={`category-${item.id}`}
-                type="text"
-                value={editCategory}
-                onChange={(e) => setEditCategory(e.target.value)}
-              />
+                value={isNewCategory ? '__new__' : editCategory}
+                onChange={handleCategoryChange}
+                required={!isNewCategory}
+                style={{ marginBottom: isNewCategory ? '8px' : '0' }}
+              >
+                <option value="" disabled>
+                  — select a category —
+                </option>
+                {existingCategories.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
+                <option value="__new__">＋ New category…</option>
+              </select>
+
+              {/* Text input revealed only when "New category" is chosen */}
+              {isNewCategory && (
+                <input
+                  id={`new-category-${item.id}`}
+                  type="text"
+                  value={newCategoryValue}
+                  onChange={(e) => setNewCategoryValue(e.target.value)}
+                  placeholder="Type new category name"
+                  required
+                  autoFocus
+                />
+              )}
             </div>
 
             <div className="form-group">
@@ -138,36 +210,40 @@ export default function ItemCard({
                 type="text"
                 value={editSubcategory}
                 onChange={(e) => setEditSubcategory(e.target.value)}
+                placeholder="e.g., lenses (optional)"
               />
             </div>
           </div>
 
           <div className="form-group">
-            <label htmlFor={`url-${item.id}`}>URL</label>
+            <label htmlFor={`url-${item.id}`}>URL (optional)</label>
             <input
               id={`url-${item.id}`}
               type="url"
               value={editUrl}
               onChange={(e) => setEditUrl(e.target.value)}
+              placeholder="https://..."
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor={`tags-${item.id}`}>Tags (comma separated)</label>
+            <label htmlFor={`tags-${item.id}`}>Tags (comma separated, optional)</label>
             <input
               id={`tags-${item.id}`}
               type="text"
               value={editTags}
               onChange={(e) => setEditTags(e.target.value)}
+              placeholder="e.g., urgent, review, budget"
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor={`notes-${item.id}`}>Notes (markdown supported)</label>
+            <label htmlFor={`notes-${item.id}`}>Notes (markdown supported, optional)</label>
             <textarea
               id={`notes-${item.id}`}
               value={editNotes}
               onChange={(e) => setEditNotes(e.target.value)}
+              placeholder="Add any notes here... **bold**, *italic*, [link](url)"
               rows={4}
             />
           </div>
@@ -175,12 +251,8 @@ export default function ItemCard({
           {error && <div className="error">{error}</div>}
 
           <div className="form-actions">
-            <button
-              onClick={handleSaveEdit}
-              disabled={isSaving}
-              className="submit-btn"
-            >
-              {isSaving ? 'Saving...' : 'Save Changes'}
+            <button onClick={handleSaveEdit} disabled={isSaving} className="submit-btn">
+              {isSaving ? 'Saving…' : 'Save Changes'}
             </button>
             <button onClick={handleCancelEdit} className="cancel-btn">
               Cancel
@@ -228,7 +300,7 @@ export default function ItemCard({
             <div className="item-tags">
               {item.tags.map((tag: string, idx: number) => (
                 <span key={idx} className="tag">
-                  #{tag}
+                  {tag}
                 </span>
               ))}
             </div>
