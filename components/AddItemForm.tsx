@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import './AddItemForm.css'
 
@@ -12,6 +12,9 @@ export default function AddItemForm({ onItemAdded }: AddItemFormProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [category, setCategory] = useState('')
+  const [isNewCategory, setIsNewCategory] = useState(false)
+  const [newCategoryValue, setNewCategoryValue] = useState('')
+  const [existingCategories, setExistingCategories] = useState<string[]>([])
   const [subcategory, setSubcategory] = useState('')
   const [tags, setTags] = useState('')
   const [notes, setNotes] = useState('')
@@ -19,11 +22,51 @@ export default function AddItemForm({ onItemAdded }: AddItemFormProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  // Fetch distinct categories whenever the form opens
+  useEffect(() => {
+    if (isOpen) {
+      fetchCategories()
+    }
+  }, [isOpen])
+
+  const fetchCategories = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('items')
+        .select('category')
+        .order('category')
+
+      if (error) throw error
+
+      // Deduplicate and sort
+      const unique = Array.from(
+        new Set((data || []).map((row: { category: string }) => row.category.trim()))
+      ).sort((a, b) => a.localeCompare(b))
+
+      setExistingCategories(unique)
+    } catch (err) {
+      console.error('Could not load categories:', err)
+    }
+  }
+
+  const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value
+    if (val === '__new__') {
+      setIsNewCategory(true)
+      setCategory('')
+    } else {
+      setIsNewCategory(false)
+      setCategory(val)
+    }
+  }
+
+  const effectiveCategory = isNewCategory ? newCategoryValue : category
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
 
-    if (!title.trim() || !category.trim()) {
+    if (!title.trim() || !effectiveCategory.trim()) {
       setError('Title and category are required')
       return
     }
@@ -39,7 +82,7 @@ export default function AddItemForm({ onItemAdded }: AddItemFormProps) {
       const { error: insertError } = await supabase.from('items').insert([
         {
           title: title.trim(),
-          category: category.trim(),
+          category: effectiveCategory.trim(),
           subcategory: subcategory.trim() || null,
           tags: tagArray,
           notes: notes.trim() || null,
@@ -55,6 +98,8 @@ export default function AddItemForm({ onItemAdded }: AddItemFormProps) {
       // Reset form
       setTitle('')
       setCategory('')
+      setIsNewCategory(false)
+      setNewCategoryValue('')
       setSubcategory('')
       setTags('')
       setNotes('')
@@ -103,14 +148,38 @@ export default function AddItemForm({ onItemAdded }: AddItemFormProps) {
           <div className="form-row">
             <div className="form-group">
               <label htmlFor="category">Category *</label>
-              <input
+
+              {/* Dropdown of existing categories */}
+              <select
                 id="category"
-                type="text"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                placeholder="e.g., photography"
-                required
-              />
+                value={isNewCategory ? '__new__' : category}
+                onChange={handleCategoryChange}
+                required={!isNewCategory}
+                style={{ marginBottom: isNewCategory ? '8px' : '0' }}
+              >
+                <option value="" disabled>
+                  — select a category —
+                </option>
+                {existingCategories.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
+                <option value="__new__">＋ New category…</option>
+              </select>
+
+              {/* Text input revealed only when "New category" is chosen */}
+              {isNewCategory && (
+                <input
+                  id="new-category"
+                  type="text"
+                  value={newCategoryValue}
+                  onChange={(e) => setNewCategoryValue(e.target.value)}
+                  placeholder="Type new category name"
+                  required
+                  autoFocus
+                />
+              )}
             </div>
 
             <div className="form-group">
@@ -162,7 +231,7 @@ export default function AddItemForm({ onItemAdded }: AddItemFormProps) {
 
           <div className="form-actions">
             <button type="submit" disabled={loading} className="submit-btn">
-              {loading ? 'Saving...' : 'Save Item'}
+              {loading ? 'Saving…' : 'Save Item'}
             </button>
             <button
               type="button"
